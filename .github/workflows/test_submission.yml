@@ -1,0 +1,53 @@
+name: Test Student Submission
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-submission:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install System Dependencies for OpenCV
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-glx libglib2.0-0
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+          pip install -r requirements.txt
+
+      - name: Security Audit - Disallowed Libraries Check
+        run: |
+          echo "Auditing tasks/ folder for disallowed imports (subprocess, RPi.GPIO)..."
+          FORBIDDEN=$(grep -rnE "import[[:space:]]+(subprocess|RPi\.GPIO|os\.system)" tasks/ || true)
+          if [ -n "$FORBIDDEN" ]; then
+            echo "ERROR: Disallowed system call or raw hardware library detected in student tasks:"
+            echo "$FORBIDDEN"
+            exit 1
+          fi
+          echo "Security audit passed cleanly."
+
+      - name: Lint Code with Flake8
+        run: |
+          # Stop build if there are Python syntax errors or undefined names
+          flake8 tasks/ api/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings
+          flake8 tasks/ api/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Execute Pytest Suite (Headless Mock Validation)
+        run: |
+          pytest tests/ -v --tb=short
